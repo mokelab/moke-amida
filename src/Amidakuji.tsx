@@ -5,8 +5,13 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 
 const Amidakuji: React.FC = () => {
-  const [participants, setParticipants] = useState<string[]>([""]);
-  const [results, setResults] = useState<string[]>([""]);
+  const queryParams = new URLSearchParams(window.location.search);
+  const initialParticipants = queryParams.get("p")?.split(",") || [""];
+  const initialResults = queryParams.get("r")?.split(",") || [""];
+
+  const [participants, setParticipants] =
+    useState<string[]>(initialParticipants);
+  const [results, setResults] = useState<string[]>(initialResults);
   const [amidaResult, setAmidaResult] = useState<string[] | null>(null);
 
   const handleParticipantChange = (
@@ -68,13 +73,30 @@ const Amidakuji: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 2, border: "1px solid grey", borderRadius: "8px" }}>
-      <Typography variant="h5" component="h2" gutterBottom>
+    <Box
+      sx={{
+        p: 2,
+        border: "1px solid grey",
+        borderRadius: "8px",
+        backgroundColor: "white",
+      }}
+    >
+      <Typography
+        variant="h5"
+        component="h2"
+        gutterBottom
+        sx={{ color: "black" }}
+      >
         あみだくじ
       </Typography>
 
       <Box sx={{ mb: 2 }}>
-        <Typography variant="h6" component="h3" gutterBottom>
+        <Typography
+          variant="h6"
+          component="h3"
+          gutterBottom
+          sx={{ color: "black" }}
+        >
           参加者
         </Typography>
         {participants.map((participant, index) => (
@@ -107,7 +129,12 @@ const Amidakuji: React.FC = () => {
       </Box>
 
       <Box sx={{ mb: 2 }}>
-        <Typography variant="h6" component="h3" gutterBottom>
+        <Typography
+          variant="h6"
+          component="h3"
+          gutterBottom
+          sx={{ color: "black" }}
+        >
           結果
         </Typography>
         {results.map((result, index) => (
@@ -145,9 +172,13 @@ const Amidakuji: React.FC = () => {
 
       {amidaResult && (
         <Box sx={{ mt: 3 }}>
-          <Typography variant="h6">結果:</Typography>
+          <Typography variant="h6" sx={{ color: "black" }}>
+            結果:
+          </Typography>
           {amidaResult.map((res, index) => (
-            <Typography key={index}>{res}</Typography>
+            <Typography key={index} sx={{ color: "black" }}>
+              {res}
+            </Typography>
           ))}
         </Box>
       )}
