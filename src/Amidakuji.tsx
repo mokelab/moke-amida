@@ -5,6 +5,13 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogActions from "@mui/material/DialogActions";
+import RadioGroup from "@mui/material/RadioGroup";
+import Radio from "@mui/material/Radio";
 
 const Amidakuji: React.FC = () => {
   const queryParams = new URLSearchParams(window.location.search);
@@ -16,6 +23,12 @@ const Amidakuji: React.FC = () => {
   const [results, setResults] = useState<string[]>(initialResults);
   const [amidaResult, setAmidaResult] = useState<string[] | null>(null);
   const [shuffleParticipants, setShuffleParticipants] = useState<boolean>(true);
+  // 片方を削除して数が余ったとき、どちら側から 1 つ削除するかを選ばせるダイアログの状態。
+  // null ならダイアログ非表示。
+  const [pendingDeletion, setPendingDeletion] = useState<DeletionSide | null>(
+    null
+  );
+  const [pendingIndex, setPendingIndex] = useState<number | null>(null);
   const [amidaData, setAmidaData] = useState<{
     lines: AmidakujiLine[];
     finalMapping: AmidakujiResultMapping[];
@@ -52,14 +65,49 @@ const Amidakuji: React.FC = () => {
     setResults([...results, ""]);
   };
 
+  // 実際に 1 件消すだけの処理。ダイアログの判定は行わない（ダイアログ経由の削除で
+  // 再びダイアログが開くのを防ぐため、判定と分離している）。
+  // setState は非同期なので、判定に使えるよう削除後の配列を返す。
+  const applyDeletion = (
+    items: string[],
+    setItems: (next: string[]) => void,
+    index: number
+  ): string[] => {
+    const next = items.filter((_, i) => i !== index);
+    setItems(next.length > 0 ? next : [""]);
+    return next;
+  };
+
+  const openDeletionPicker = (side: DeletionSide) => {
+    setPendingIndex(null);
+    setPendingDeletion(side);
+  };
+
   const removeParticipantField = (index: number) => {
-    const newParticipants = participants.filter((_, i) => i !== index);
-    setParticipants(newParticipants.length > 0 ? newParticipants : [""]);
+    const next = applyDeletion(participants, setParticipants, index);
+    // 結果が余るなら、どれを消すかを選ばせる（同じ index を自動で消すと当たりが
+    // 黙って消えてしまうため）
+    if (countFilled(next) < countFilled(results)) {
+      openDeletionPicker("result");
+    }
   };
 
   const removeResultField = (index: number) => {
-    const newResults = results.filter((_, i) => i !== index);
-    setResults(newResults.length > 0 ? newResults : [""]);
+    const next = applyDeletion(results, setResults, index);
+    if (countFilled(next) < countFilled(participants)) {
+      openDeletionPicker("participant");
+    }
+  };
+
+  const confirmPendingDeletion = () => {
+    if (pendingDeletion !== null && pendingIndex !== null) {
+      if (pendingDeletion === "result") {
+        applyDeletion(results, setResults, pendingIndex);
+      } else {
+        applyDeletion(participants, setParticipants, pendingIndex);
+      }
+    }
+    setPendingDeletion(null);
   };
 
   const runAmidakuji = () => {
@@ -317,7 +365,91 @@ const Amidakuji: React.FC = () => {
           ))}
         </Box>
       )}
+
+      <DeletionPickerDialog
+        side={pendingDeletion}
+        items={pendingDeletion === "participant" ? participants : results}
+        selectedIndex={pendingIndex}
+        onSelect={setPendingIndex}
+        onCancel={() => setPendingDeletion(null)}
+        onConfirm={confirmPendingDeletion}
+      />
     </Box>
+  );
+};
+
+type DeletionSide = "participant" | "result";
+
+const DELETION_LABELS: Record<
+  DeletionSide,
+  { title: string; description: string }
+> = {
+  result: {
+    title: "削除する結果を選んでください",
+    description:
+      "参加者を削除したため、結果の数が多くなっています。当たりが消えないよう、削除する結果を選んでください。",
+  },
+  participant: {
+    title: "削除する参加者を選んでください",
+    description:
+      "結果を削除したため、参加者の数が多くなっています。削除する参加者を選んでください。",
+  },
+};
+
+/**
+ * 余っている側の項目を 1 つ選んで削除させるダイアログ。
+ *
+ * `items` は生の配列を受け取り、空欄を除外した候補だけを表示する。
+ * 除外後も **元の配列でのインデックス** を選択値として保持すること
+ * （filter 後のインデックスで削除すると別の項目が消える）。
+ */
+const DeletionPickerDialog: React.FC<{
+  side: DeletionSide | null;
+  items: string[];
+  selectedIndex: number | null;
+  onSelect: (index: number) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}> = ({ side, items, selectedIndex, onSelect, onCancel, onConfirm }) => {
+  if (side === null) return null;
+
+  const candidates = items
+    .map((value, index) => ({ value, index }))
+    .filter(({ value }) => value.trim() !== "");
+  const labels = DELETION_LABELS[side];
+
+  return (
+    <Dialog open onClose={onCancel}>
+      <DialogTitle>{labels.title}</DialogTitle>
+      <DialogContent>
+        <DialogContentText>{labels.description}</DialogContentText>
+        <RadioGroup
+          value={selectedIndex === null ? "" : String(selectedIndex)}
+          onChange={(e) => onSelect(Number(e.target.value))}
+          sx={{ mt: 1 }}
+        >
+          {candidates.map(({ value, index }) => (
+            <FormControlLabel
+              key={index}
+              value={String(index)}
+              control={<Radio />}
+              label={value}
+            />
+          ))}
+        </RadioGroup>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onCancel}>削除しない</Button>
+        <Button
+          variant="contained"
+          color="error"
+          onClick={onConfirm}
+          disabled={selectedIndex === null}
+        >
+          削除
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 
@@ -336,6 +468,16 @@ interface AmidakujiLine {
 interface AmidakujiResultMapping {
   participant: string; // 参加者名
   result: string; // 対応する結果名
+}
+
+/**
+ * 空欄を除いた実質の入力数。
+ *
+ * 削除ダイアログの発火判定は、runAmidakuji が空欄を除外してから数を比較するのと
+ * 同じ基準にそろえる必要がある。
+ */
+function countFilled(items: string[]): number {
+  return items.filter((v) => v.trim() !== "").length;
 }
 
 /**

@@ -20,8 +20,17 @@ React 19 + TypeScript + Vite (SWC) + MUI v7 (Emotion) の SPA。あみだくじ 
 - `src/main.tsx` → `src/App.tsx` → `src/Amidakuji.tsx` という単純な 3 階層。実質すべてのコードが `Amidakuji.tsx` にある。
 - `Amidakuji.tsx` は 2 部構成:
   - 前半: `Amidakuji` コンポーネント（入力フォーム、state、Canvas 描画の `useEffect`）
-  - 後半: 純粋関数 `shuffleArray` / `generateAmidakujiData(participants, results, height, lineDensity=0.3)` とその型定義（`AmidakujiLine` / `AmidakujiResultMapping`）。横線の生成と最終マッピングの計算はすべてここに閉じている。
+  - 中盤: 削除ダイアログのプレゼンテーションコンポーネント `DeletionPickerDialog` と、その文言テーブル `DELETION_LABELS`
+  - 後半: 純粋関数 `countFilled` / `shuffleArray` / `generateAmidakujiData(participants, results, height, lineDensity=0.3)` とその型定義（`AmidakujiLine` / `AmidakujiResultMapping`）。横線の生成と最終マッピングの計算はすべてここに閉じている。
 - 横線生成のルール: 同じ段で左隣に線が引かれている場合はその位置に線を引かない（`|--|--|` のような連結を防ぐため）。この不変条件を壊すと結果の追跡ロジックが破綻する。
+
+### 参加者・結果の削除（数を揃えるためのダイアログ）
+
+`runAmidakuji` は空欄を除いた参加者数と結果数が一致しないと実行できない。そのため、片方を削除して数が余ったときに、余っている側から 1 つ選んで削除させるダイアログを出す。
+
+- 発火条件は `countFilled`（`trim()` が空でない要素数）での比較。`runAmidakuji` のバリデーションと同じ基準にそろえること。参加者を削除して `countFilled(参加者) < countFilled(結果)` なら結果を選ばせ、結果を削除した場合はその逆。同じ index の項目を自動で消す実装にはしない（当たりが黙って消えるため）。
+- `applyDeletion`（実際に消すだけ）と `removeParticipantField` / `removeResultField`（消した後にダイアログ発火を判定する）は意図的に分けてある。ダイアログ経由の削除は `applyDeletion` を直接呼ぶので、ダイアログが連鎖して開くことはない。
+- ダイアログの候補は空欄を除外して表示するが、選択値は **元の配列でのインデックス** を保持する。`filter` 後のインデックスで削除すると別の項目が消える。
 
 ### 偏り対策（真下に当たりやすい問題への対応）
 
