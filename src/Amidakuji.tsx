@@ -83,6 +83,13 @@ const Amidakuji: React.FC = () => {
     setPendingDeletion(side);
   };
 
+  // 閉じるときは選択値も必ず捨てる。pendingDeletion === null なのに pendingIndex が
+  // 残っている状態を作らないこと（別の配列に対する古いインデックスになるため）。
+  const closeDeletionPicker = () => {
+    setPendingDeletion(null);
+    setPendingIndex(null);
+  };
+
   const removeParticipantField = (index: number) => {
     const next = applyDeletion(participants, setParticipants, index);
     // 結果が余るなら、どれを消すかを選ばせる（同じ index を自動で消すと当たりが
@@ -107,7 +114,7 @@ const Amidakuji: React.FC = () => {
         applyDeletion(participants, setParticipants, pendingIndex);
       }
     }
-    setPendingDeletion(null);
+    closeDeletionPicker();
   };
 
   const runAmidakuji = () => {
@@ -371,7 +378,7 @@ const Amidakuji: React.FC = () => {
         items={pendingDeletion === "participant" ? participants : results}
         selectedIndex={pendingIndex}
         onSelect={setPendingIndex}
-        onCancel={() => setPendingDeletion(null)}
+        onCancel={closeDeletionPicker}
         onConfirm={confirmPendingDeletion}
       />
     </Box>
@@ -396,6 +403,10 @@ const DELETION_LABELS: Record<
   },
 };
 
+// 同時に 1 つしか開かないダイアログなので、id は固定で衝突しない
+const TITLE_ID = "deletion-picker-title";
+const DESCRIPTION_ID = "deletion-picker-description";
+
 /**
  * 余っている側の項目を 1 つ選んで削除させるダイアログ。
  *
@@ -419,10 +430,17 @@ const DeletionPickerDialog: React.FC<{
   const labels = DELETION_LABELS[side];
 
   return (
-    <Dialog open onClose={onCancel}>
-      <DialogTitle>{labels.title}</DialogTitle>
+    <Dialog
+      open
+      onClose={onCancel}
+      aria-labelledby={TITLE_ID}
+      aria-describedby={DESCRIPTION_ID}
+    >
+      <DialogTitle id={TITLE_ID}>{labels.title}</DialogTitle>
       <DialogContent>
-        <DialogContentText>{labels.description}</DialogContentText>
+        <DialogContentText id={DESCRIPTION_ID}>
+          {labels.description}
+        </DialogContentText>
         <RadioGroup
           value={selectedIndex === null ? "" : String(selectedIndex)}
           onChange={(e) => onSelect(Number(e.target.value))}
