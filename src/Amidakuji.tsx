@@ -3,6 +3,8 @@ import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
 
 const Amidakuji: React.FC = () => {
   const queryParams = new URLSearchParams(window.location.search);
@@ -13,9 +15,13 @@ const Amidakuji: React.FC = () => {
     useState<string[]>(initialParticipants);
   const [results, setResults] = useState<string[]>(initialResults);
   const [amidaResult, setAmidaResult] = useState<string[] | null>(null);
+  const [shuffleParticipants, setShuffleParticipants] = useState<boolean>(true);
   const [amidaData, setAmidaData] = useState<{
     lines: AmidakujiLine[];
     finalMapping: AmidakujiResultMapping[];
+    height: number;
+    participants: string[]; // 実際に計算・描画に使った順序
+    results: string[];
   } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -69,15 +75,19 @@ const Amidakuji: React.FC = () => {
       return;
     }
 
-    // あみだくじのロジック（今回は簡易的にシャッフル）
-    //const shuffledResults = [...resultList].sort(() => Math.random() - 0.5);
+    // あみだくじは横線が少ないと開始位置に留まりやすいので、
+    // 参加者の並び自体をシャッフルして「真下が当たり」の偏りを減らす
+    const orderedParticipants = shuffleParticipants
+      ? shuffleArray(participantList)
+      : participantList;
 
-    //const finalResults = participantList.map(
-    //      (participant, index) => `${participant} -> ${shuffledResults[index]}`
-    //  );
-
-    const r = generateAmidakujiData(participantList, resultList);
-    setAmidaData(r); // Store the full data including lines
+    const r = generateAmidakujiData(orderedParticipants, resultList);
+    // 描画で参照するラベルは、生 state ではなく実際に計算に使った配列を保持する
+    setAmidaData({
+      ...r,
+      participants: orderedParticipants,
+      results: resultList,
+    });
     setAmidaResult(
       r.finalMapping.map(
         (mapping) => `${mapping.participant} -> ${mapping.result}`
@@ -100,13 +110,17 @@ const Amidakuji: React.FC = () => {
     // Clear canvas
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-    const numParticipants = participants.filter((p) => p.trim() !== "").length;
+    const numParticipants = amidaData.participants.length;
     if (numParticipants === 0) return;
 
+    // 参加者が1人のときは間隔が定義できない（0除算）ので、中央に1本だけ描く
     const verticalLineSpacing =
-      (canvasWidth - 2 * padding) / (numParticipants - 1);
+      numParticipants === 1
+        ? 0
+        : (canvasWidth - 2 * padding) / (numParticipants - 1);
+    const originX = numParticipants === 1 ? canvasWidth / 2 : padding;
     const horizontalLineHeight =
-      (canvasHeight - 2 * padding - 2 * textHeight) / 10; // 10 is default height from generateAmidakujiData
+      (canvasHeight - 2 * padding - 2 * textHeight) / amidaData.height;
 
     ctx.lineWidth = 2;
     ctx.strokeStyle = "black";
@@ -116,7 +130,7 @@ const Amidakuji: React.FC = () => {
 
     // Draw vertical lines and participant/result names
     for (let i = 0; i < numParticipants; i++) {
-      const x = padding + i * verticalLineSpacing;
+      const x = originX + i * verticalLineSpacing;
 
       // Draw vertical line
       ctx.beginPath();
@@ -127,7 +141,7 @@ const Amidakuji: React.FC = () => {
       // Draw participant name at top
       ctx.fillStyle = "blue";
       ctx.fillText(
-        participants[i] || `参加者${i + 1}`,
+        amidaData.participants[i] || `参加者${i + 1}`,
         x,
         padding + textHeight / 2
       );
@@ -135,7 +149,7 @@ const Amidakuji: React.FC = () => {
       // Draw result name at bottom
       ctx.fillStyle = "green";
       ctx.fillText(
-        results[i] || `結果${i + 1}`,
+        amidaData.results[i] || `結果${i + 1}`,
         x,
         canvasHeight - padding - textHeight / 2
       );
@@ -144,8 +158,8 @@ const Amidakuji: React.FC = () => {
     // Draw horizontal lines
     ctx.strokeStyle = "red";
     amidaData.lines.forEach((line) => {
-      const x1 = padding + line.columnIndex * verticalLineSpacing;
-      const x2 = padding + (line.columnIndex + 1) * verticalLineSpacing;
+      const x1 = originX + line.columnIndex * verticalLineSpacing;
+      const x2 = originX + (line.columnIndex + 1) * verticalLineSpacing;
       const y =
         padding +
         textHeight +
@@ -157,7 +171,7 @@ const Amidakuji: React.FC = () => {
       ctx.lineTo(x2, y);
       ctx.stroke();
     });
-  }, [amidaData, participants, results]); // Redraw when amidaData, participants, or results change
+  }, [amidaData]); // 描画に必要な情報はすべて amidaData に入っている
 
   return (
     <Box
@@ -253,6 +267,19 @@ const Amidakuji: React.FC = () => {
         </Button>
       </Box>
 
+      <Box sx={{ mb: 1 }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={shuffleParticipants}
+              onChange={(e) => setShuffleParticipants(e.target.checked)}
+            />
+          }
+          label="参加者の並びをシャッフルする"
+          sx={{ color: "black" }}
+        />
+      </Box>
+
       <Button variant="contained" onClick={runAmidakuji} sx={{ mb: 2 }}>
         あみだくじを実行
       </Button>
@@ -312,26 +339,46 @@ interface AmidakujiResultMapping {
 }
 
 /**
+ * 配列をシャッフルした新しい配列を返す（Fisher-Yates）
+ *
+ * `sort(() => Math.random() - 0.5)` は分布が偏るため使わない。
+ */
+function shuffleArray<T>(items: T[]): T[] {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/**
  * あみだくじの線と最終結果を生成する関数
  *
  * @param participants 参加者名の配列 (例: ["A", "B", "C"])
  * @param results 結果名の配列 (例: ["賞品1", "賞品2", "賞品3"])
  * participants と同じ長さであることを期待します。
- * @param height あみだくじの高さ（横線を引くことができる階層の数）。デフォルトは10。
+ * @param height あみだくじの高さ（横線を引くことができる階層の数）。
+ * デフォルトは参加者数に応じて増える（最低10）。段数が参加者数に対して少ないと
+ * 開始位置に留まりやすくなるため。
  * @param lineDensity 横線が引かれるおおよその確率（0から1）。数値が高いほど線が多くなります。デフォルトは0.3。
- * @returns 生成された横線のリストと、各参加者の最終的な結果のマッピング
+ * @returns 生成された横線のリスト、各参加者の最終的な結果のマッピング、実際に使った段数
  */
 function generateAmidakujiData(
   participants: string[],
   results: string[],
-  height: number = 10,
+  height: number = Math.max(10, participants.length * 4),
   lineDensity: number = 0.3
-): { lines: AmidakujiLine[]; finalMapping: AmidakujiResultMapping[] } {
+): {
+  lines: AmidakujiLine[];
+  finalMapping: AmidakujiResultMapping[];
+  height: number;
+} {
   const numParticipants = participants.length;
 
   // 入力値のバリデーション
   if (numParticipants === 0) {
-    return { lines: [], finalMapping: [] };
+    return { lines: [], finalMapping: [], height };
   }
   if (participants.length !== results.length) {
     console.warn(
@@ -355,6 +402,7 @@ function generateAmidakujiData(
           result: results[0] || "結果未定義", // resultsが空配列の場合も考慮
         },
       ],
+      height,
     };
   }
 
@@ -408,7 +456,7 @@ function generateAmidakujiData(
     });
   }
 
-  return { lines: generatedLines, finalMapping };
+  return { lines: generatedLines, finalMapping, height };
 }
 
 export default Amidakuji;
