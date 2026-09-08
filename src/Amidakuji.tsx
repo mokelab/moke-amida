@@ -12,11 +12,14 @@ import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import RadioGroup from "@mui/material/RadioGroup";
 import Radio from "@mui/material/Radio";
+import FormGroup from "@mui/material/FormGroup";
 
 const Amidakuji: React.FC = () => {
   const queryParams = new URLSearchParams(window.location.search);
   const initialParticipants = queryParams.get("p")?.split(",") || [""];
   const initialResults = queryParams.get("r")?.split(",") || [""];
+  // ?edit=1 のとき、表示直後に欠席者を外すダイアログを出す
+  const initialEdit = queryParams.get("edit") === "1";
 
   const [participants, setParticipants] =
     useState<string[]>(initialParticipants);
@@ -29,6 +32,11 @@ const Amidakuji: React.FC = () => {
     null
   );
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
+  // 起動時の「参加者を修正する」ダイアログ。参加者が 1 人も入っていない URL で
+  // 出しても意味がないので、その場合は開かない。
+  const [attendanceOpen, setAttendanceOpen] = useState<boolean>(
+    initialEdit && countFilled(initialParticipants) > 0
+  );
   const [amidaData, setAmidaData] = useState<{
     lines: AmidakujiLine[];
     finalMapping: AmidakujiResultMapping[];
@@ -106,15 +114,36 @@ const Amidakuji: React.FC = () => {
     }
   };
 
-  const confirmPendingDeletion = () => {
-    if (pendingDeletion !== null && pendingIndex !== null) {
-      if (pendingDeletion === "result") {
-        applyDeletion(results, setResults, pendingIndex);
-      } else {
-        applyDeletion(participants, setParticipants, pendingIndex);
-      }
+  // 起動時ダイアログからの一括削除。欠席者は元配列のインデックスで受け取る。
+  const applyAttendance = (absentIndices: number[]) => {
+    const absent = new Set(absentIndices);
+    const next = participants.filter((_, i) => !absent.has(i));
+    setParticipants(next.length > 0 ? next : [""]);
+    setAttendanceOpen(false);
+    // 結果が余るなら、既存のピッカーで消す結果を 1 つずつ選ばせる
+    if (countFilled(next) < countFilled(results)) {
+      openDeletionPicker("result");
     }
-    closeDeletionPicker();
+  };
+
+  const confirmPendingDeletion = () => {
+    if (pendingDeletion === null || pendingIndex === null) {
+      closeDeletionPicker();
+      return;
+    }
+    // 一括削除の後は 2 つ以上余りうるので、数が揃うまでピッカーを開いたままにする
+    const next =
+      pendingDeletion === "result"
+        ? applyDeletion(results, setResults, pendingIndex)
+        : applyDeletion(participants, setParticipants, pendingIndex);
+    const opposite =
+      pendingDeletion === "result" ? participants : results;
+    if (countFilled(next) > countFilled(opposite)) {
+      // 選択値は必ず捨てる（削除後の配列に対する古いインデックスになるため）
+      setPendingIndex(null);
+    } else {
+      closeDeletionPicker();
+    }
   };
 
   const runAmidakuji = () => {
@@ -373,12 +402,19 @@ const Amidakuji: React.FC = () => {
         </Box>
       )}
 
+      {attendanceOpen && (
+        <AttendancePickerDialog
+          items={participants}
+          onCancel={() => setAttendanceOpen(false)}
+          onConfirm={applyAttendance}
+        />
+      )}
+
       <DeletionPickerDialog
         side={pendingDeletion}
         items={pendingDeletion === "participant" ? participants : results}
         selectedIndex={pendingIndex}
         onSelect={setPendingIndex}
-        onCancel={closeDeletionPicker}
         onConfirm={confirmPendingDeletion}
       />
     </Box>
@@ -413,15 +449,17 @@ const DESCRIPTION_ID = "deletion-picker-description";
  * `items` は生の配列を受け取り、空欄を除外した候補だけを表示する。
  * 除外後も **元の配列でのインデックス** を選択値として保持すること
  * （filter 後のインデックスで削除すると別の項目が消える）。
+ *
+ * 数を揃えるまで閉じられないダイアログなので、キャンセル手段は用意しない
+ * （`onClose` を渡さないことで、背景クリックや Esc でも閉じない）。
  */
 const DeletionPickerDialog: React.FC<{
   side: DeletionSide | null;
   items: string[];
   selectedIndex: number | null;
   onSelect: (index: number) => void;
-  onCancel: () => void;
   onConfirm: () => void;
-}> = ({ side, items, selectedIndex, onSelect, onCancel, onConfirm }) => {
+}> = ({ side, items, selectedIndex, onSelect, onConfirm }) => {
   if (side === null) return null;
 
   const candidates = items
@@ -432,7 +470,6 @@ const DeletionPickerDialog: React.FC<{
   return (
     <Dialog
       open
-      onClose={onCancel}
       aria-labelledby={TITLE_ID}
       aria-describedby={DESCRIPTION_ID}
     >
@@ -457,7 +494,6 @@ const DeletionPickerDialog: React.FC<{
         </RadioGroup>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onCancel}>削除しない</Button>
         <Button
           variant="contained"
           color="error"
@@ -465,6 +501,79 @@ const DeletionPickerDialog: React.FC<{
           disabled={selectedIndex === null}
         >
           削除
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// 同時に 1 つしか開かないダイアログなので、id は固定で衝突しない
+const ATTENDANCE_TITLE_ID = "attendance-picker-title";
+const ATTENDANCE_DESCRIPTION_ID = "attendance-picker-description";
+
+/**
+ * `?edit=1` で開く、欠席者をまとめて外すためのダイアログ。
+ *
+ * `items` は生の参加者配列を受け取り、空欄を除外した候補だけを表示する。
+ * 除外後も **元の配列でのインデックス** をチェック状態として保持すること
+ * （filter 後のインデックスで削除すると別の人が消える）。
+ *
+ * チェック状態は内部に閉じているので、親側で条件レンダリングして
+ * 開くたびにリセットされるようにする。
+ */
+const AttendancePickerDialog: React.FC<{
+  items: string[];
+  onCancel: () => void;
+  onConfirm: (absentIndices: number[]) => void;
+}> = ({ items, onCancel, onConfirm }) => {
+  const [absent, setAbsent] = useState<number[]>([]);
+
+  const candidates = items
+    .map((value, index) => ({ value, index }))
+    .filter(({ value }) => value.trim() !== "");
+
+  const toggle = (index: number, checked: boolean) => {
+    setAbsent((prev) =>
+      checked ? [...prev, index] : prev.filter((i) => i !== index)
+    );
+  };
+
+  return (
+    <Dialog
+      open
+      onClose={onCancel}
+      aria-labelledby={ATTENDANCE_TITLE_ID}
+      aria-describedby={ATTENDANCE_DESCRIPTION_ID}
+    >
+      <DialogTitle id={ATTENDANCE_TITLE_ID}>参加者を修正する</DialogTitle>
+      <DialogContent>
+        <DialogContentText id={ATTENDANCE_DESCRIPTION_ID}>
+          今回参加できない人がいる場合は削除してください。
+        </DialogContentText>
+        <FormGroup sx={{ mt: 1 }}>
+          {candidates.map(({ value, index }) => (
+            <FormControlLabel
+              key={index}
+              control={
+                <Checkbox
+                  checked={absent.includes(index)}
+                  onChange={(e) => toggle(index, e.target.checked)}
+                />
+              }
+              label={value}
+            />
+          ))}
+        </FormGroup>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onCancel}>全員参加</Button>
+        <Button
+          variant="contained"
+          color="error"
+          onClick={() => onConfirm(absent)}
+          disabled={absent.length === 0}
+        >
+          削除して続ける
         </Button>
       </DialogActions>
     </Dialog>
