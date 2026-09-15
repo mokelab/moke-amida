@@ -120,9 +120,17 @@ const Amidakuji: React.FC = () => {
     const next = participants.filter((_, i) => attending.has(i));
     setParticipants(next.length > 0 ? next : [""]);
     setAttendanceOpen(false);
-    // 結果が余るなら、既存のピッカーで消す結果を 1 つずつ選ばせる
-    if (countFilled(next) < countFilled(results)) {
-      openDeletionPicker("result");
+    const needed = countFilled(next);
+    if (needed < countFilled(results)) {
+      const filledResults = results.filter((r) => r.trim() !== "");
+      // 結果が全部同じならどれを消しても同じなので、選ばせずに先頭から必要数だけ残す
+      if (new Set(filledResults.map((r) => r.trim())).size === 1) {
+        const trimmed = filledResults.slice(0, needed);
+        setResults(trimmed.length > 0 ? trimmed : [""]);
+      } else {
+        // 結果が余るなら、既存のピッカーで消す結果を 1 つずつ選ばせる
+        openDeletionPicker("result");
+      }
     }
   };
 
