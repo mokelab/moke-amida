@@ -18,7 +18,7 @@ const Amidakuji: React.FC = () => {
   const queryParams = new URLSearchParams(window.location.search);
   const initialParticipants = queryParams.get("p")?.split(",") || [""];
   const initialResults = queryParams.get("r")?.split(",") || [""];
-  // ?edit=1 のとき、表示直後に欠席者を外すダイアログを出す
+  // ?edit=1 のとき、表示直後に参加者を選ぶダイアログを出す
   const initialEdit = queryParams.get("edit") === "1";
 
   const [participants, setParticipants] =
@@ -32,7 +32,7 @@ const Amidakuji: React.FC = () => {
     null
   );
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
-  // 起動時の「参加者を修正する」ダイアログ。参加者が 1 人も入っていない URL で
+  // 起動時の「参加者を選ぶ」ダイアログ。参加者が 1 人も入っていない URL で
   // 出しても意味がないので、その場合は開かない。
   const [attendanceOpen, setAttendanceOpen] = useState<boolean>(
     initialEdit && countFilled(initialParticipants) > 0
@@ -114,10 +114,10 @@ const Amidakuji: React.FC = () => {
     }
   };
 
-  // 起動時ダイアログからの一括削除。欠席者は元配列のインデックスで受け取る。
-  const applyAttendance = (absentIndices: number[]) => {
-    const absent = new Set(absentIndices);
-    const next = participants.filter((_, i) => !absent.has(i));
+  // 起動時ダイアログで選ばれた参加者だけを残す。参加者は元配列のインデックスで受け取る。
+  const applyAttendance = (attendingIndices: number[]) => {
+    const attending = new Set(attendingIndices);
+    const next = participants.filter((_, i) => attending.has(i));
     setParticipants(next.length > 0 ? next : [""]);
     setAttendanceOpen(false);
     // 結果が余るなら、既存のピッカーで消す結果を 1 つずつ選ばせる
@@ -512,11 +512,11 @@ const ATTENDANCE_TITLE_ID = "attendance-picker-title";
 const ATTENDANCE_DESCRIPTION_ID = "attendance-picker-description";
 
 /**
- * `?edit=1` で開く、欠席者をまとめて外すためのダイアログ。
+ * `?edit=1` で開く、今回参加する人を選ぶためのダイアログ。
  *
  * `items` は生の参加者配列を受け取り、空欄を除外した候補だけを表示する。
  * 除外後も **元の配列でのインデックス** をチェック状態として保持すること
- * （filter 後のインデックスで削除すると別の人が消える）。
+ * （filter 後のインデックスで残すと別の人が残る）。
  *
  * チェック状態は内部に閉じているので、親側で条件レンダリングして
  * 開くたびにリセットされるようにする。
@@ -524,31 +524,32 @@ const ATTENDANCE_DESCRIPTION_ID = "attendance-picker-description";
 const AttendancePickerDialog: React.FC<{
   items: string[];
   onCancel: () => void;
-  onConfirm: (absentIndices: number[]) => void;
+  onConfirm: (attendingIndices: number[]) => void;
 }> = ({ items, onCancel, onConfirm }) => {
-  const [absent, setAbsent] = useState<number[]>([]);
+  const [attending, setAttending] = useState<number[]>([]);
 
   const candidates = items
     .map((value, index) => ({ value, index }))
     .filter(({ value }) => value.trim() !== "");
 
   const toggle = (index: number, checked: boolean) => {
-    setAbsent((prev) =>
+    setAttending((prev) =>
       checked ? [...prev, index] : prev.filter((i) => i !== index)
     );
   };
 
   return (
+    // onClose は渡さない。背景クリックや Esc で閉じると選択が捨てられ、
+    // 全員が参加者に残ってしまうため。全員残すのは「全員参加」ボタンだけにする。
     <Dialog
       open
-      onClose={onCancel}
       aria-labelledby={ATTENDANCE_TITLE_ID}
       aria-describedby={ATTENDANCE_DESCRIPTION_ID}
     >
-      <DialogTitle id={ATTENDANCE_TITLE_ID}>参加者を修正する</DialogTitle>
+      <DialogTitle id={ATTENDANCE_TITLE_ID}>参加者を選ぶ</DialogTitle>
       <DialogContent>
         <DialogContentText id={ATTENDANCE_DESCRIPTION_ID}>
-          今回参加できない人がいる場合は削除してください。
+          今回参加する人を選んでください。
         </DialogContentText>
         <FormGroup sx={{ mt: 1 }}>
           {candidates.map(({ value, index }) => (
@@ -556,7 +557,7 @@ const AttendancePickerDialog: React.FC<{
               key={index}
               control={
                 <Checkbox
-                  checked={absent.includes(index)}
+                  checked={attending.includes(index)}
                   onChange={(e) => toggle(index, e.target.checked)}
                 />
               }
@@ -569,11 +570,10 @@ const AttendancePickerDialog: React.FC<{
         <Button onClick={onCancel}>全員参加</Button>
         <Button
           variant="contained"
-          color="error"
-          onClick={() => onConfirm(absent)}
-          disabled={absent.length === 0}
+          onClick={() => onConfirm(attending)}
+          disabled={attending.length === 0}
         >
-          削除して続ける
+          この参加者で始める
         </Button>
       </DialogActions>
     </Dialog>
