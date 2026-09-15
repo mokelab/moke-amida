@@ -31,7 +31,7 @@ React 19 + TypeScript + Vite (SWC) + MUI v7 (Emotion) の SPA。あみだくじ 
 - 発火条件は `countFilled`（`trim()` が空でない要素数）での比較。`runAmidakuji` のバリデーションと同じ基準にそろえること。参加者を削除して `countFilled(参加者) < countFilled(結果)` なら結果を選ばせ、結果を削除した場合はその逆。同じ index の項目を自動で消す実装にはしない（当たりが黙って消えるため）。
 - 起動時ダイアログからの一括削除は `applyAttendance`。結果が 2 つ以上余りうるので、`confirmPendingDeletion` は 1 つ消したあとまだ余っていればピッカーを閉じずに選択値だけ捨てて開き直す（数が揃うまで繰り返す）。
 - `applyDeletion`（実際に消すだけ）と `removeParticipantField` / `removeResultField`（消した後にダイアログ発火を判定する）は意図的に分けてある。ダイアログ経由の削除は `applyDeletion` を直接呼ぶので、ダイアログが連鎖して開くことはない。
-- 結果／参加者ピッカーにキャンセル手段はない（数が揃わないと `runAmidakuji` が動かないため）。`onClose` も渡していないので背景クリックや Esc でも閉じない。起動時の `AttendancePickerDialog` には「全員参加」があり、こちらは閉じられる。
+- 結果／参加者ピッカーにキャンセル手段はない（数が揃わないと `runAmidakuji` が動かないため）。`onClose` も渡していないので背景クリックや Esc でも閉じない。起動時の `AttendancePickerDialog` は「全員参加」ボタンで閉じられるが、`onClose` は渡していない（背景クリックや Esc で閉じると選択が捨てられて全員が残ってしまうため）。
 - ダイアログの候補は空欄を除外して表示するが、選択値は **元の配列でのインデックス** を保持する。`filter` 後のインデックスで削除すると別の項目が消える。
 
 ### 偏り対策（真下に当たりやすい問題への対応）

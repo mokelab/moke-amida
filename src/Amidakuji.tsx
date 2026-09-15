@@ -18,7 +18,7 @@ const Amidakuji: React.FC = () => {
   const queryParams = new URLSearchParams(window.location.search);
   const initialParticipants = queryParams.get("p")?.split(",") || [""];
   const initialResults = queryParams.get("r")?.split(",") || [""];
-  // ?edit=1 のとき、表示直後に欠席者を外すダイアログを出す
+  // ?edit=1 のとき、表示直後に参加者を選ぶダイアログを出す
   const initialEdit = queryParams.get("edit") === "1";
 
   const [participants, setParticipants] =
@@ -539,9 +539,10 @@ const AttendancePickerDialog: React.FC<{
   };
 
   return (
+    // onClose は渡さない。背景クリックや Esc で閉じると選択が捨てられ、
+    // 全員が参加者に残ってしまうため。全員残すのは「全員参加」ボタンだけにする。
     <Dialog
       open
-      onClose={onCancel}
       aria-labelledby={ATTENDANCE_TITLE_ID}
       aria-describedby={ATTENDANCE_DESCRIPTION_ID}
     >
