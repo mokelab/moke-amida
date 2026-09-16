@@ -57,7 +57,7 @@ Canvas 描画は生 state の `participants` / `results` を一切参照せず�
 
 ## デプロイ
 
-GitHub Pages 想定。`vite.config.ts` で `base: '/moke-amida/'`、`build.outDir: 'docs'` を設定しており、**`docs/` はビルド成果物だがリポジトリにコミットされている**（`.gitignore` 対象外）。デプロイ用の変更をする際は `npm run build` の結果を含めてコミットする。`base` はリポジトリ名（`mokeamida`）と一致していないので、パスを触る際は注意。
+GitHub Pages 想定。`vite.config.ts` で `base: '/moke-amida/'`、`build.outDir: 'docs'` を設定しており、**`docs/` はビルド成果物だがリポジトリにコミットされている**（`.gitignore` 対象外）。デプロイ用の変更をする際は `npm run build` の結果を含めてコミットする。公開先は https://mokelab.github.io/moke-amida/ で、`base` はリポジトリ名（`moke-amida`）と一致している（ローカルのディレクトリ名 `mokeamida` とは別物なので混同しないこと）。
 
 ## その他
 
